@@ -1170,9 +1170,12 @@ select, .btn { font-family: var(--sans); background: var(--surface); }
 .limpiar[hidden] { display: none; }
 #filtros.quieto .fper, #filtros.quieto #fgrupo, #filtros.quieto .fg:nth-of-type(3) { opacity: .45; pointer-events: none; }
 /* En Comparar el constructor trae su propio periodo y su variación: los de la
-   barra no le llegan, así que se atenúan. Las destacadas siguen vivas porque
-   el atajo «Destacadas» del constructor las usa. */
-#filtros.cmpmodo .fper, #filtros.cmpmodo #fgrupo, #filtros.cmpmodo #fbase { opacity: .45; pointer-events: none; }
+   barra no le llegan, así que se atenúan. Las destacadas solo se atenúan con
+   «A tu medida» a la vista (`cmpcons`): ahí las instituciones se eligen dentro
+   del constructor; en Ficha, Semáforo, Evolución y Distribución siguen mandando.
+   El atajo «Destacadas» del constructor lee las que ya estén elegidas. */
+#filtros.cmpmodo .fper, #filtros.cmpmodo #fgrupo, #filtros.cmpmodo #fbase,
+#filtros.cmpcons .finst, #filtros.cmpcons #limpiar { opacity: .45; pointer-events: none; }
 
 /* Selector de instituciones */
 #selinst { position: fixed; inset: 0; z-index: 60; display: none; align-items: flex-start;
@@ -1559,8 +1562,19 @@ label.ctl > span { font: 600 9.5px/1 var(--mono); letter-spacing: .1em; text-tra
 #main tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 
 /* ---------------------------------------------------------- constructor */
-.cmpctl { display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--rule);
-          border-radius: 12px; padding: 12px; background: var(--surface-2); }
+/* Lienzo + panel. El gráfico vive a la izquierda y se queda fijo mientras se
+   recorren las opciones del panel de la derecha; el panel se pliega a un riel
+   de íconos y el gráfico gana el ancho. En pantallas angostas el panel es una
+   hoja que sube desde abajo. */
+.cmpws { display: grid; grid-template-columns: minmax(0, 1fr) 336px; gap: 14px; align-items: start;
+         transition: grid-template-columns .32s cubic-bezier(.2, .8, .2, 1); }
+.cmpws[data-plegado] { grid-template-columns: minmax(0, 1fr) 56px; }
+.cmplienzo { position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; gap: 10px; min-width: 0;
+             background: var(--surface); padding: 2px 0 6px; }
+.cmplienzo .gcard { max-height: calc(100dvh - 300px); min-height: 260px; overflow-y: auto;
+                    box-shadow: 0 18px 40px -28px color-mix(in srgb, var(--ink) 55%, transparent); }
+.cmplienzo .vaciog { min-height: 300px; display: grid; place-items: center; }
+
 .cmptipos { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; }
 .cmptipos button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px 9px;
                    border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2);
@@ -1570,16 +1584,72 @@ label.ctl > span { font: 600 9.5px/1 var(--mono); letter-spacing: .1em; text-tra
 .cmptipos button:hover { border-color: var(--accent); color: var(--ink); transform: translateY(-1px); }
 .cmptipos button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--plane);
                                         box-shadow: 0 10px 22px -12px var(--accent); }
-.cmpgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 168px), 1fr)); gap: 10px 12px;
-           align-items: end; }
-.cmpgrid select { width: 100%; height: 36px; border-radius: 8px; background-color: var(--surface); }
-.cmpgrid label.ctl { display: flex; min-width: 0; }
+/* La barra de tipos sobre el lienzo: una sola fila; si no cabe, se desliza. */
+.cmptool { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px 1px 4px;
+           border: 1px solid var(--rule); border-radius: 12px; padding: 6px; background: var(--surface-2); }
+.cmptool::-webkit-scrollbar { display: none; }
+.cmptool button { flex: 1 0 auto; flex-direction: row; justify-content: center; gap: 7px; padding: 8px 10px; min-width: 64px; }
+
+/* El resumen del corte: pastillas que abren el panel en su sección. */
+.cmpresumen { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cmpresumen button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px;
+                     font: 500 11.5px/1 var(--sans); color: var(--ink-2); background: var(--surface-2);
+                     border: 1px solid var(--rule); border-radius: 999px; cursor: pointer; max-width: 100%;
+                     transition: border-color .15s, color .15s; }
+.cmpresumen button span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmpresumen button svg { color: var(--accent); flex: none; }
+.cmpresumen button:hover { color: var(--ink); border-color: var(--accent); }
+.cmpresumen button.off { color: var(--muted); border-style: dashed; }
+.cmpresumen .cmpabrir { display: none; }
+
+/* El panel: tarjeta con cabecera y tres secciones. */
+.cmppanel { position: sticky; top: 0; min-width: 0; border: 1px solid var(--rule); border-radius: 14px;
+            background: var(--surface-2); box-shadow: 0 18px 40px -30px color-mix(in srgb, var(--ink) 60%, transparent); }
+.cmpph { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--rule); }
+.cmpph b { font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); flex: 1; }
+.cmpph .asa { display: none; }
+.cmpplegar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; cursor: pointer;
+             border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2); transition: all .2s; }
+.cmpplegar:hover { color: var(--accent); border-color: var(--accent); }
+.cmpws[data-plegado] .cmpplegar svg { transform: rotate(180deg); }
+.cmpsecs { display: flex; flex-direction: column; }
+.cmpsec { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; scroll-margin-top: 8px;
+          border-radius: 10px; }
+.cmpsec + .cmpsec { border-top: 1px dashed var(--rule); border-radius: 0; }
+.cmpsec h3 { display: flex; align-items: center; gap: 7px; margin: 0; font: 600 12.5px/1 var(--sans); color: var(--ink); }
+.cmpsec h3 svg { color: var(--accent); }
+.cmpsec h3 em { font-style: normal; font: 600 11px/1 var(--mono); color: var(--accent); }
+.cmpsec.brilla { animation: brilla 1s ease-out; }
+@keyframes brilla { from { background: color-mix(in srgb, var(--accent) 16%, transparent); } to { background: transparent; } }
+.cmpnota { margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--muted); }
+.cmpgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+.cmpgrid .ancho { grid-column: 1 / -1; }
+.cmpgrid select, .cmpvopts select { width: 100%; height: 36px; border-radius: 8px; background-color: var(--surface); }
+.cmpgrid label.ctl, .cmpvopts label.ctl { display: flex; min-width: 0; }
+.cmpvopts { display: flex; flex-direction: column; gap: 10px; transition: opacity .2s; }
+.cmpsec.off .cmpvopts .ctl, .cmpsec.off .cmpseg { opacity: .45; }
 label.chk { display: inline-flex; align-items: center; gap: 8px; height: 36px; font-size: 12.5px; color: var(--ink-2);
             cursor: pointer; border: 1px solid var(--rule); border-radius: 8px; padding: 0 12px; background: var(--surface); }
 label.chk input { accent-color: var(--accent); width: 16px; height: 16px; }
 label.chk:has(input:disabled) { opacity: .45; cursor: default; }
-.cmpents { display: flex; flex-direction: column; gap: 8px; border-top: 1px dashed var(--rule); padding-top: 10px; }
-.cmpents .fl em { font-style: normal; color: var(--accent); }
+
+/* Interruptor de la variación. */
+.cmpsw { margin-left: auto; position: relative; width: 38px; height: 22px; flex: none; border-radius: 999px; cursor: pointer;
+         border: 1px solid var(--rule); background: var(--surface); transition: background .2s, border-color .2s; }
+.cmpsw i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+           background: var(--muted); transition: transform .22s cubic-bezier(.2, .8, .2, 1), background .2s; }
+.cmpsw[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.cmpsw[aria-checked="true"] i { transform: translateX(16px); background: var(--plane); }
+.cmpsw:focus-visible, .cmpseg button:focus-visible, .cmpplegar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* % | Nominal: los mismos botones que los tipos de gráfico, en segmentado. */
+.cmpseg { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 3px; border: 1px solid var(--rule);
+          border-radius: 10px; background: var(--surface); }
+.cmpseg button { height: 30px; border: 0; border-radius: 7px; background: transparent; color: var(--ink-2); cursor: pointer;
+                 font: 600 12px/1 var(--sans); transition: all .15s; }
+.cmpseg button:hover:not(:disabled) { color: var(--ink); }
+.cmpseg button[aria-pressed="true"] { background: var(--accent); color: var(--plane); box-shadow: 0 8px 18px -10px var(--accent); }
+.cmpseg button:disabled { cursor: default; }
+
 .cmpchips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .cmpchips .chip { font: 500 12px/1 var(--sans); border-radius: 999px; padding: 4px 4px 4px 10px; height: 30px;
                   background: var(--surface); border: 1px solid var(--rule); }
@@ -1589,17 +1659,54 @@ label.chk:has(input:disabled) { opacity: .45; cursor: default; }
                                  border: 1px solid var(--rule); border-radius: 999px; height: 28px; padding: 0 11px; cursor: pointer; }
 .cmppre select { padding-right: 26px; }
 .cmppre button:hover { color: var(--ink); border-color: var(--accent); }
+
+/* Plegado: solo el riel de íconos, cada uno abre su sección. */
+.cmprail { display: none; }
+.cmpws[data-plegado] .cmpph { justify-content: center; padding: 10px 0; }
+.cmpws[data-plegado] .cmpph b, .cmpws[data-plegado] .cmpsecs { display: none; }
+.cmpws[data-plegado] .cmprail { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0 12px; }
+.cmprail button { position: relative; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px;
+                  border: 1px solid transparent; background: transparent; color: var(--ink-2); cursor: pointer; transition: all .15s; }
+.cmprail button:hover { color: var(--accent); border-color: var(--rule); background: var(--surface); }
+.cmprail button b { position: absolute; top: -3px; right: -5px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+                    font: 600 9px/16px var(--mono); text-align: center; background: var(--accent); color: var(--plane); }
+
 .cmpdl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .cmpdl .fl { margin-right: 4px; }
 .cmptabla > summary { cursor: pointer; font: 500 11.5px/1 var(--mono); color: var(--accent); padding: 4px 0 8px;
                       width: fit-content; }
 .cmptabla .card.tabla { max-height: 420px; }
-@media (max-width: 980px) { .cmptipos { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+@media (max-width: 1180px) { .cmptool button span { display: none; } .cmptool button { min-width: 40px; } }
+/* Angosto: una columna, el gráfico arriba y las opciones en una hoja inferior. */
+@media (max-width: 980px) {
+  .cmpws, .cmpws[data-plegado] { grid-template-columns: minmax(0, 1fr); }
+  .cmplienzo { position: static; }
+  .cmplienzo .gcard { max-height: none; }
+  .cmptool button span { display: inline; }
+  .cmpresumen .cmpabrir { display: inline-flex; color: var(--plane); background: var(--accent); border-color: var(--accent); }
+  .cmpresumen .cmpabrir svg { color: currentColor; }
+  section.cmp { padding-bottom: 72px !important; }
+  .cmppanel { position: fixed; top: auto; left: 0; right: 0; bottom: 0; z-index: 45; border-radius: 18px 18px 0 0;
+              max-height: 64dvh; overflow-y: auto; overscroll-behavior: contain; background: var(--surface);
+              box-shadow: 0 -20px 50px -20px rgba(0,0,0,.55);
+              transform: translateY(calc(100% - 54px - env(safe-area-inset-bottom)));
+              transition: transform .28s cubic-bezier(.2, .8, .2, 1); padding-bottom: env(safe-area-inset-bottom); }
+  .cmppanel.abierta { transform: none; }
+  .cmpph, .cmpws[data-plegado] .cmpph { position: sticky; top: 0; z-index: 1; background: var(--surface); cursor: pointer;
+           height: 54px; padding: 6px 12px 0 16px; justify-content: flex-start; }
+  .cmpph .asa { display: block; position: absolute; top: 7px; left: 50%; width: 38px; height: 4px; margin-left: -19px;
+                border-radius: 999px; background: var(--rule); }
+  .cmpws[data-plegado] .cmpph b, .cmpws[data-plegado] .cmpsecs { display: flex; }
+  .cmpws[data-plegado] .cmpph b { display: block; }
+  .cmpws[data-plegado] .cmprail { display: none; }
+  .cmpplegar svg, .cmpws[data-plegado] .cmpplegar svg { transform: rotate(-90deg); }
+  .cmppanel.abierta .cmpplegar svg { transform: rotate(90deg); }
+}
 @media (max-width: 560px) {
-  .cmptipos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .cmpgrid { grid-template-columns: 1fr 1fr; }
+  .cmptool button span { display: none; }
   .cmpdl button { flex: 1 1 auto; }
 }
+@media print { .cmppanel, .cmptool, .cmpresumen { display: none !important; } .cmpws { display: block; } }
 
 /* --------------------------------------------------------------- móvil */
 @media (max-width: 860px) {
@@ -7978,6 +8085,9 @@ function cmpInit() {
   if (c.transf === "yoy" || c.transf === "var") { if (c.transf === "yoy") c.vbase = "yoy"; c.transf = "nivel"; }
   if (!CMP_TRANSF.some(([x]) => x === c.transf)) c.transf = "nivel";
   if (!CMP_VBASE.some(([x]) => x === c.vbase)) c.vbase = ["yoy", "mom", "dic"].includes(S.base) ? S.base : "yoy";
+  if (typeof c.var !== "boolean") c.var = true;
+  if (c.vunid !== "nom") c.vunid = "pct";
+  c.plegado = !!c.plegado;
   if (c.sis == null) c.sis = true;
   c.ents = (c.ents || []).filter(nm => M.entidades.some(e => e.n === nm));
   if (!c.ents.length && !c.vacio) c.ents = cmpPreset(M, "auto");
@@ -7998,19 +8108,25 @@ function cmpJCierre(M, j) {
  *  mismo mes del año anterior (mismo criterio que `jBase`); contra otro mes
  *  se compararían acumulados de distinto largo. */
 const cmpVbase = (v, vbase) => v.acumulado && vbase !== "yoy" ? "yoy" : vbase || "yoy";
-function cmpTransf(v, modo, j0, vbase, M) {
+/* `vunid` dice cómo se expresa la variación: "pct" la da en % relativo —para
+   montos y también para ratios—; "nom" la da en la unidad de la variable —S/
+   para montos, puntos para ratios en %—. */
+function cmpTransf(v, modo, j0, vbase, M, vunid = "pct") {
   const mat = v.mat, monto = esMontoU(v.unidad);
   const sg = (x, d) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(d);
   if (modo === "var") {
-    const vb = cmpVbase(v, vbase);
+    const vb = cmpVbase(v, vbase), rel = vunid !== "nom";
     const jb = j => vb === "mom" ? j - 1 : vb === "dic" ? cmpJCierre(M, j) : vb === "tramo" ? j0 : j - 12;
     const etq = (CMP_VBASE.find(([x]) => x === vb) || [])[1] +
       (vb !== (vbase || "yoy") ? " (acumulado del ejercicio)" : "");
+    const und = rel ? "%" : v.unidad === "pct" ? "pp" : monto ? "nominal" : "";
     return {
       val: (i, j) => { const k = jb(j), a = mat[i][j], b = k >= 0 ? mat[i][k] : null;
-        return a == null || b == null || (monto && !b) ? null : monto ? (a - b) / Math.abs(b) * 100 : a - b; },
-      fmt: x => x == null ? "—" : sg(x, monto ? 1 : 2) + (monto ? "%" : v.unidad === "pct" ? " pp" : ""),
-      txt: (monto ? "var. % " : "variación ") + etq + (!monto && v.unidad === "pct" ? " (pp)" : ""), etq, vb };
+        return a == null || b == null || (rel && !b) ? null : rel ? (a - b) / Math.abs(b) * 100 : a - b; },
+      fmt: x => x == null ? "—" : rel ? sg(x, 1) + "%"
+        : v.unidad === "pct" ? sg(x, 2) + " pp"
+        : (x > 0 ? "+" : x < 0 ? "−" : "") + fmt(Math.abs(x), v.unidad, true),
+      txt: (rel ? "var. % " : "var. nominal ") + etq + (und === "pp" ? " (pp)" : ""), etq, vb, und };
   }
   if (modo === "base100") {
     const b0 = {};
@@ -8047,7 +8163,7 @@ function cmpDatos() {
   if (c.sis && v.agg != null && transf !== "dif") filas.unshift({ n: "Total del sistema", i: v.agg, sis: true });
   /* La variación sale siempre del nivel de la variable, sea cual sea la
      transformación del gráfico: va en la tabla y en el tooltip, no en el eje. */
-  const tv = cmpTransf(v, "var", j0, c.vbase, M);
+  const tv = cmpTransf(v, "var", j0, c.vbase, M, c.vunid);
   filas.forEach(f => { f.vals = js.map(j => tr.val(f.i, j)); f.vars = js.map(j => tv.val(f.i, j)); });
   const etq = j => {
     const p = M.periodos[j];
@@ -8083,7 +8199,7 @@ function cmpOpcion(X, t, exp) {
   const ultimo = f => { for (let k = f.vals.length - 1; k >= 0; k--) if (f.vals[k] != null) return f.vals[k]; return null; };
   /* La variación acompaña al valor en el tooltip, en gris: es lectura, no eje. */
   const tv = X.tv;
-  const vtx = (f, k) => { const x = f && f.vars ? f.vars[k] : null;
+  const vtx = (f, k) => { const x = c.var && f && f.vars ? f.vars[k] : null;
     return x == null ? "" : `<span class="gx-var">${tv.fmt(x)}</span>`; };
   const fila = n => filas.find(f => f.n === n);
   const tipEje = ps => tipCab(esc(ps[0].name)) + [...ps].filter(p => p.value != null && p.seriesName !== "_")
@@ -8140,7 +8256,7 @@ function cmpOpcion(X, t, exp) {
   if (c.tipo === "dispersion") {
     const vy = V(c.kpiY), vr = c.kpiR ? V(c.kpiR) : null, j = X.j1;
     const ty = cmpTransf(vy, X.transf === "dif" && (vy.agg == null || esMontoU(vy.unidad)) ? "nivel" : X.transf, M.periodos.indexOf(c.desde), c.vbase, M);
-    const tvy = cmpTransf(vy, "var", M.periodos.indexOf(c.desde), c.vbase, M);
+    const tvy = cmpTransf(vy, "var", M.periodos.indexOf(c.desde), c.vbase, M, c.vunid);
     const pts = filas.map((f, k) => ({ f, k, x: f.vals[0], y: ty.val(f.i, j), r: vr ? vr.mat[f.i][j] : null }))
       .filter(o => o.x != null && o.y != null);
     const rmax = Math.max(1e-9, ...pts.map(o => Math.abs(o.r || 0)));
@@ -8151,7 +8267,7 @@ function cmpOpcion(X, t, exp) {
       yAxis: ejeValor(t, x => ty.fmt(x), { name: `${vy.corto} ↑`, nameTextStyle: { color: t.muted, fontSize: 10.5, align: "left" } }),
       tooltip: { trigger: "item", formatter: p => {
         const o = pts[p.dataIndex];
-        const vyv = tvy.val(o.f.i, j);
+        const vyv = c.var ? tvy.val(o.f.i, j) : null;
         return tipCab(esc(o.f.n)) + tipFila(cols[o.k], vy.corto, ty.fmt(o.y) + (vyv == null ? "" : `<span class="gx-var">${tvy.fmt(vyv)}</span>`), true) +
           tipFila(t.muted, v.corto, tr.fmt(o.x) + vtx(o.f, 0)) +
           (vr ? tipFila(t.muted, vr.corto, fmt(o.r, vr.unidad, true)) : "");
@@ -8244,12 +8360,12 @@ function cmpTabla(X) {
   if (c.tipo === "dispersion") {
     const vy = V(c.kpiY), vr = c.kpiR ? V(c.kpiR) : null;
     const ty = cmpTransf(vy, X.transf === "dif" && (vy.agg == null || esMontoU(vy.unidad)) ? "nivel" : X.transf, M.periodos.indexOf(c.desde), c.vbase, M);
-    const tv = X.tv, tvy = cmpTransf(vy, "var", M.periodos.indexOf(c.desde), c.vbase, M);
-    const vc = t => `Var. ${CMP_VCORTA[t.vb]}`;
-    return { cab: ["Institución", v.corto, vc(tv), vy.corto, vc(tvy), ...(vr ? [vr.corto] : [])],
-      filas: filas.map(f => [f.n, [f.vals[0], tr.fmt(f.vals[0])], [f.vars[0], tv.fmt(f.vars[0]), 1],
+    const tv = X.tv, tvy = cmpTransf(vy, "var", M.periodos.indexOf(c.desde), c.vbase, M, c.vunid);
+    const vc = t => cmpVcab(t), sv = c.var;
+    return { cab: ["Institución", v.corto, ...(sv ? [vc(tv)] : []), vy.corto, ...(sv ? [vc(tvy)] : []), ...(vr ? [vr.corto] : [])],
+      filas: filas.map(f => [f.n, [f.vals[0], tr.fmt(f.vals[0])], ...(sv ? [[f.vars[0], tv.fmt(f.vars[0]), 1]] : []),
         [ty.val(f.i, X.j1), ty.fmt(ty.val(f.i, X.j1))],
-        [tvy.val(f.i, X.j1), tvy.fmt(tvy.val(f.i, X.j1)), 1],
+        ...(sv ? [[tvy.val(f.i, X.j1), tvy.fmt(tvy.val(f.i, X.j1)), 1]] : []),
         ...(vr ? [[vr.mat[f.i][X.j1], fmt(vr.mat[f.i][X.j1], vr.unidad, true)]] : [])]) };
   }
   if (c.tipo === "radar") {
@@ -8260,15 +8376,18 @@ function cmpTabla(X) {
   if (c.tipo === "ranking") {
     /* La tabla suma la variación del mismo mes: el gráfico dice quién está
        arriba; la columna, quién se movió y cuánto. */
-    return { cab: ["Institución", `${v.corto}${tr.txt ? ` (${tr.txt})` : ""}`, `Var. ${X.tv.etq}`],
-      filas: filas.map(f => [f.n, [f.vals[0], tr.fmt(f.vals[0])], [f.vars[0], X.tv.fmt(f.vars[0]), 1]])
+    return { cab: ["Institución", `${v.corto}${tr.txt ? ` (${tr.txt})` : ""}`, ...(c.var ? [cmpVcab(X.tv, true)] : [])],
+      filas: filas.map(f => [f.n, [f.vals[0], tr.fmt(f.vals[0])], ...(c.var ? [[f.vars[0], X.tv.fmt(f.vars[0]), 1]] : [])])
         .sort((a, b) => (b[1][0] ?? -Infinity) - (a[1][0] ?? -Infinity)) };
   }
   /* Cada institución con su variación inmediatamente a la derecha. */
-  const vc = `Var. ${CMP_VCORTA[X.tv.vb]}`;
-  return { cab: ["Periodo", ...filas.flatMap(f => [f.n, vc])],
-    filas: js.map((j, k) => [etq(j), ...filas.flatMap(f => [[f.vals[k], tr.fmt(f.vals[k])], [f.vars[k], X.tv.fmt(f.vars[k]), 1]])]) };
+  const vc = cmpVcab(X.tv);
+  return { cab: ["Periodo", ...filas.flatMap(f => c.var ? [f.n, vc] : [f.n])],
+    filas: js.map((j, k) => [etq(j), ...filas.flatMap(f => [[f.vals[k], tr.fmt(f.vals[k])],
+      ...(c.var ? [[f.vars[k], X.tv.fmt(f.vars[k]), 1]] : [])])]) };
 }
+/** Cabecera de una columna de variación: base y unidad («Var. vs. año ant. (pp)»). */
+const cmpVcab = (t, larga) => `Var. ${larga ? t.etq : CMP_VCORTA[t.vb]}${t.und ? ` (${t.und})` : ""}`;
 
 function cmpTitulo(X) {
   const t = (CMP_TIPOS.find(([x]) => x === X.c.tipo) || [])[1] || "";
@@ -8280,7 +8399,7 @@ function cmpCorte(X) {
   return [M.subtitulo, foto ? etiquetaPeriodo(c.hasta) : `${etq(js[0])} – ${etq(js[js.length - 1])}`,
     foto ? "" : (CMP_FREC.find(([x]) => x === c.frec) || [])[1],
     X.transf !== "nivel" ? (CMP_TRANSF.find(([x]) => x === X.transf) || [])[1] : "",
-    c.tipo === "radar" ? "" : `variación ${X.tv.etq}`].filter(Boolean).join(" · ");
+    c.tipo === "radar" || !c.var ? "" : `${X.tv.txt.replace(/^var\./, "variación")}`].filter(Boolean).join(" · ");
 }
 
 function vistaConstructor() {
@@ -8298,9 +8417,9 @@ function vistaConstructor() {
   const fil = X.filas.filter(f => !f.sis);
   const nEnt = X.filas.length;
   const alto = c.tipo === "ranking" ? Math.max(260, 30 + nEnt * 30)
-    : c.tipo === "calor" ? Math.max(260, 90 + nEnt * 28) : 460;
+    : c.tipo === "calor" ? Math.max(260, 90 + nEnt * 28) : 420;
   const g = nEnt ? grafico("cmp-g", ({ exp }) => cmpOpcion(X, tk(), exp),
-    { h: alto, hm: c.tipo === "ranking" || c.tipo === "calor" ? alto : 380,
+    { h: alto, hm: c.tipo === "ranking" || c.tipo === "calor" ? alto : 340,
       click: p => { const n = p.seriesType === "radar" || p.seriesType === "bar" && c.tipo === "ranking" || p.seriesType === "scatter" && disp ? p.name : p.seriesName;
         if (n && M === D() && idxEnt(n) >= 0) clicEntidad(n); } }) : "";
   const tb = cmpTabla(X);
@@ -8309,6 +8428,27 @@ function vistaConstructor() {
     // El título del gráfico ya nombra la variable; aquí solo el corte elegido.
     : `${esc(cmpCorte(X))} · ${fil.length} ${fil.length === 1 ? "institución" : "instituciones"}${
       X.filas.some(f => f.sis) ? " + sistema" : ""}.`;
+  const sinVar = c.tipo === "radar";
+  /* El resumen del corte bajo el gráfico: se lee de un vistazo qué se está
+     mirando, y cada pastilla abre el panel en su sección. */
+  const res = [
+    ["corte", M.subtitulo || c.mundo],
+    ["corte", sinVar ? "Indicadores clave" : disp ? `${v.corto} × ${X.V(c.kpiY).corto}` : v.corto],
+    ["corte", foto ? etiquetaPeriodo(c.hasta) : `${X.etq(X.js[0])} → ${X.etq(X.js[X.js.length - 1])}`],
+    ...(foto ? [] : [["corte", (CMP_FREC.find(([x]) => x === c.frec) || [])[1]]]),
+    ...(X.transf !== "nivel" ? [["corte", (CMP_TRANSF.find(([x]) => x === X.transf) || [])[1]]] : []),
+    ["ents", `${fil.length} ${fil.length === 1 ? "institución" : "instituciones"}${X.filas.some(f => f.sis) ? " + sistema" : ""}`],
+    ...(sinVar ? [] : [["var", c.var ? `Var. ${c.vunid === "nom" ? "nominal" : "%"} ${CMP_VCORTA[X.tv.vb]}` : "Sin variación", !c.var]]),
+  ];
+  const IC = {
+    corte: '<path d="M2 4h7M12 4h2M2 8h2M7 8h7M2 12h9M14 12h0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10.5" cy="4" r="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="5.5" cy="8" r="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="12.5" cy="12" r="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/>',
+    var: '<path d="M8 2.5l5.5 10.5h-11z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>',
+    ents: '<circle cx="5" cy="6" r="2.4" fill="currentColor"/><circle cx="11" cy="6" r="2.4" fill="currentColor" opacity=".55"/><path d="M1.5 13.5c.6-2.2 2-3.3 3.5-3.3s2.9 1.1 3.5 3.3M8.5 13.5c.4-1.5 1.3-3.3 2.5-3.3 1.6 0 2.9 1.1 3.5 3.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>',
+    plegar: '<path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  };
+  const ic = (k, w = 16) => `<svg viewBox="0 0 16 16" width="${w}" height="${w}" aria-hidden="true">${IC[k]}</svg>`;
+  const nRes = { corte: "", var: sinVar ? "" : c.var ? (c.vunid === "nom" ? "S/" : "%") : "off", ents: String(fil.length) };
+  const ROT = { corte: "Corte", var: "Variación", ents: "Instituciones" };
 
   return `<section class="cmp">
     <div class="shead">
@@ -8317,35 +8457,64 @@ function vistaConstructor() {
       <p class="why">${lectura}</p>
       ${botonExport("constructor")}
     </div>
-    <div class="cmpctl">
-      <div class="cmptipos" role="group" aria-label="Tipo de gráfico">${CMP_TIPOS.map(([x, txt, ic]) =>
-        `<button data-cmtipo="${x}" aria-pressed="${x === c.tipo}" title="${esc(txt)}"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${ic}</svg><span>${esc(txt)}</span></button>`).join("")}</div>
-      <div class="cmpgrid">
-        <label class="ctl"><span>Sector</span><select data-cm="mundo">${opt(Object.keys(P.mundos).map(m => [m, P.mundos[m].subtitulo || m]), c.mundo)}</select></label>
-        ${c.tipo === "radar" ? `<label class="ctl"><span>Variables</span><select disabled><option>Indicadores clave (percentil)</option></select></label>`
-          : `<label class="ctl"><span>${disp ? "Eje horizontal" : "Variable"}</span><select data-cm="kpi">${optVars(c.kpi)}</select></label>`}
-        ${disp ? `<label class="ctl"><span>Eje vertical</span><select data-cm="kpiY">${optVars(c.kpiY)}</select></label>
-          <label class="ctl"><span>Tamaño</span><select data-cm="kpiR"><option value="">Igual para todas</option>${optVars(c.kpiR)}</select></label>` : ""}
-        ${c.tipo === "radar" ? "" : `<label class="ctl"><span>Transformación</span><select data-cm="transf">${opt(transfs, X.transf)}</select></label>
-        <label class="ctl" title="La variación se muestra en la tabla y al pasar el mouse sobre el gráfico"><span>Variación (tabla y tooltip)</span><select data-cm="vbase">${opt(CMP_VBASE, c.vbase)}</select></label>`}
-        ${foto ? "" : `<label class="ctl"><span>Frecuencia</span><select data-cm="frec">${opt(CMP_FREC, c.frec)}</select></label>`}
-        ${!foto || (c.tipo !== "radar" && c.vbase === "tramo") ? `<label class="ctl"><span>Desde</span><select data-cm="desde">${opt(pers, c.desde)}</select></label>` : ""}
-        <label class="ctl"><span>${foto ? "Periodo" : "Hasta"}</span><select data-cm="hasta">${opt(pers, c.hasta)}</select></label>
-        <label class="chk"><input type="checkbox" data-cm="sis"${c.sis ? " checked" : ""}${v.agg == null || X.transf === "dif" ? " disabled" : ""}><span>Total del sistema</span></label>
+    <div class="cmpws"${c.plegado ? " data-plegado" : ""}>
+      <div class="cmplienzo">
+        <div class="cmptipos cmptool" role="group" aria-label="Tipo de gráfico">${CMP_TIPOS.map(([x, txt, ic]) =>
+          `<button data-cmtipo="${x}" aria-pressed="${x === c.tipo}" title="${esc(txt)}"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${ic}</svg><span>${esc(txt)}</span></button>`).join("")}</div>
+        ${nEnt ? `<figure class="card gcard">${g}</figure>` : `<div class="vaciog">${lectura}</div>`}
+        <div class="cmpresumen">${res.map(([k, txt, off]) =>
+          `<button data-cmfoco="${k}" class="${off ? "off" : ""}" title="Cambiar en «${ROT[k]}»">${ic(k, 12)}<span>${esc(txt)}</span></button>`).join("")}
+          <button class="cmpabrir" data-cmhoja aria-expanded="${_cmpHoja}">${ic("corte", 12)}<span>Opciones</span></button></div>
       </div>
-      <div class="cmpents">
-        <span class="fl">Instituciones <em>${fil.length}</em></span>
-        <div class="cmpchips">${fil.map(f => `<span class="chip"><span class="dot" style="background:${cmpColor(f, X.filas.indexOf(f) - (X.filas[0] && X.filas[0].sis ? 1 : 0), t0)}"></span><span class="cn">${esc(corta(f.n, 22))}</span><button data-cmquita="${esc(f.n)}" aria-label="Quitar ${esc(f.n)}">&times;</button></span>`).join("")}
-          <button class="addinst" data-cmadd>＋ Elegir instituciones</button></div>
-        <div class="cmppre"><span class="fl">Atajos</span>
-          ${M === D() && S.pins.length ? `<button data-cmpre="pins">Destacadas</button>` : ""}
-          <button data-cmpre="top5">5 mayores</button><button data-cmpre="top10">10 mayores</button>
-          <button data-cmpre="todas">Todas</button>
-          ${gruposM.length ? `<select data-cmpreg aria-label="Grupo"><option value="">Un grupo…</option>${gruposM.map(([gk, l]) => `<option value="g:${esc(gk)}">${esc(l)}</option>`).join("")}</select>` : ""}
-          <button data-cmpre="ninguna">Ninguna</button></div>
-      </div>
+      <aside class="cmppanel${_cmpHoja ? " abierta" : ""}" aria-label="Opciones del gráfico">
+        <div class="cmpph">
+          <span class="asa" aria-hidden="true"></span>
+          <b>Opciones</b>
+          <button class="cmpplegar" data-cmplegar aria-expanded="${!c.plegado}" title="${c.plegado ? "Mostrar las opciones" : "Plegar las opciones y agrandar el gráfico"}" aria-label="${c.plegado ? "Mostrar opciones" : "Plegar opciones"}">${ic("plegar")}</button>
+        </div>
+        <div class="cmprail" role="group" aria-label="Secciones de opciones">${["corte", "var", "ents"].map(k =>
+          `<button data-cmfoco="${k}" title="${ROT[k]}" aria-label="${ROT[k]}">${ic(k, 18)}${nRes[k] ? `<b>${esc(nRes[k])}</b>` : ""}</button>`).join("")}</div>
+        <div class="cmpsecs">
+          <div class="cmpsec" data-sec="corte">
+            <h3>${ic("corte", 13)}Corte</h3>
+            <div class="cmpgrid">
+              <label class="ctl ancho"><span>Sector</span><select data-cm="mundo">${opt(Object.keys(P.mundos).map(m => [m, P.mundos[m].subtitulo || m]), c.mundo)}</select></label>
+              ${c.tipo === "radar" ? `<label class="ctl ancho"><span>Variables</span><select disabled><option>Indicadores clave (percentil)</option></select></label>`
+                : `<label class="ctl ancho"><span>${disp ? "Eje horizontal" : "Variable"}</span><select data-cm="kpi">${optVars(c.kpi)}</select></label>`}
+              ${disp ? `<label class="ctl ancho"><span>Eje vertical</span><select data-cm="kpiY">${optVars(c.kpiY)}</select></label>
+                <label class="ctl ancho"><span>Tamaño</span><select data-cm="kpiR"><option value="">Igual para todas</option>${optVars(c.kpiR)}</select></label>` : ""}
+              ${c.tipo === "radar" ? "" : `<label class="ctl ancho"><span>Transformación</span><select data-cm="transf">${opt(transfs, X.transf)}</select></label>`}
+              ${!foto || (c.tipo !== "radar" && c.var && c.vbase === "tramo") ? `<label class="ctl"><span>Desde</span><select data-cm="desde">${opt(pers, c.desde)}</select></label>` : ""}
+              <label class="ctl"><span>${foto ? "Periodo" : "Hasta"}</span><select data-cm="hasta">${opt(pers, c.hasta)}</select></label>
+              ${foto ? "" : `<label class="ctl"><span>Frecuencia</span><select data-cm="frec">${opt(CMP_FREC, c.frec)}</select></label>`}
+              <label class="chk ancho"><input type="checkbox" data-cm="sis"${c.sis ? " checked" : ""}${v.agg == null || X.transf === "dif" ? " disabled" : ""}><span>Total del sistema</span></label>
+            </div>
+          </div>
+          <div class="cmpsec${c.var && !sinVar ? "" : " off"}" data-sec="var">
+            <h3>${ic("var", 13)}Variación
+              ${sinVar ? "" : `<button class="cmpsw" role="switch" data-cmvar aria-checked="${c.var}" aria-label="Mostrar variaciones" title="${c.var ? "Ocultar" : "Mostrar"} las variaciones en la tabla, el tooltip y los archivos"><i></i></button>`}</h3>
+            ${sinVar ? `<p class="cmpnota">El radar compara percentiles del mes; no lleva variación.</p>` : `<div class="cmpvopts">
+              <label class="ctl ancho"><span>Contra</span><select data-cm="vbase"${c.var ? "" : " disabled"}>${opt(CMP_VBASE, c.vbase)}</select></label>
+              <div class="cmpseg" role="group" aria-label="Unidad de la variación">
+                <button data-cmvunid="pct" aria-pressed="${c.vunid !== "nom"}"${c.var ? "" : " disabled"}>%</button>
+                <button data-cmvunid="nom" aria-pressed="${c.vunid === "nom"}"${c.var ? "" : " disabled"}>Nominal</button></div>
+              <p class="cmpnota">${c.var ? (c.vunid === "nom" ? "En soles para montos y en puntos (pp) para ratios." : "Cambio relativo en %, para montos y para ratios.") + " Va en la tabla y en el tooltip."
+                : "Apagada: la tabla, el tooltip y los archivos muestran solo los valores."}</p></div>`}
+          </div>
+          <div class="cmpsec" data-sec="ents">
+            <h3>${ic("ents", 13)}Instituciones <em>${fil.length}</em></h3>
+            <div class="cmpchips">${fil.map(f => `<span class="chip"><span class="dot" style="background:${cmpColor(f, X.filas.indexOf(f) - (X.filas[0] && X.filas[0].sis ? 1 : 0), t0)}"></span><span class="cn">${esc(corta(f.n, 22))}</span><button data-cmquita="${esc(f.n)}" aria-label="Quitar ${esc(f.n)}">&times;</button></span>`).join("")}
+              <button class="addinst" data-cmadd>＋ Elegir</button></div>
+            <div class="cmppre"><span class="fl">Atajos</span>
+              ${M === D() && S.pins.length ? `<button data-cmpre="pins">Destacadas</button>` : ""}
+              <button data-cmpre="top5">5 mayores</button><button data-cmpre="top10">10 mayores</button>
+              <button data-cmpre="todas">Todas</button>
+              ${gruposM.length ? `<select data-cmpreg aria-label="Grupo"><option value="">Un grupo…</option>${gruposM.map(([gk, l]) => `<option value="g:${esc(gk)}">${esc(l)}</option>`).join("")}</select>` : ""}
+              <button data-cmpre="ninguna">Ninguna</button></div>
+          </div>
+        </div>
+      </aside>
     </div>
-    ${nEnt ? `<figure class="card gcard">${g}</figure>` : `<div class="vaciog">${lectura}</div>`}
     <div class="cmpdl"><span class="fl">Descargar este corte</span>
       <button class="bprim" data-cmx="xlsx">Excel</button><button class="bsec" data-cmx="csv">CSV</button>
       <button class="bsec" data-cmx="ppt">Lámina PPT</button><button class="bsec" data-cmx="svg">SVG</button>
@@ -8356,24 +8525,71 @@ function vistaConstructor() {
         <tbody>${tb.filas.map(r => `<tr><td class="ent">${esc(r[0])}</td>${r.slice(1).map(x => `<td class="num${x[2] ? " vz-var" : ""}">${esc(x[1])}</td>`).join("")}</tr>`).join("")}</tbody></table></div></details>` : ""}
     ${notaPie({
       grafico: "Constructor de comparaciones",
-      lectura: `Elige el tipo de gráfico, la variable y el corte; el gráfico, la tabla y
-        los archivos que bajes muestran exactamente lo mismo. La variación (en % para montos, en
-        puntos para ratios) va en la tabla, a la derecha de cada valor, y al pasar el mouse sobre
-        el gráfico; se mide contra la base elegida —año anterior, mes anterior, cierre del año
-        anterior o inicio del tramo (el mes «Desde»)—, y los acumulados del ejercicio, como la
-        utilidad, solo contra el año anterior; el índice base 100 parte del primer
-        mes con dato del tramo; la diferencia contra el sistema solo existe para ratios.
-        El radar ubica a cada institución en percentiles frente a todo su sector.`,
+      lectura: `Elige el tipo de gráfico arriba y el corte en el panel de opciones —que se pliega
+        para agrandar el gráfico—; el gráfico, la tabla y los archivos que bajes muestran
+        exactamente lo mismo. La variación se puede apagar; encendida va en la tabla, a la
+        derecha de cada valor, y al pasar el mouse sobre el gráfico. En «%» es el cambio
+        relativo, para montos y para ratios; en «Nominal», la diferencia en soles para montos y
+        en puntos porcentuales (pp) para ratios. Se mide contra la base elegida —año anterior,
+        mes anterior, cierre del año anterior o inicio del tramo (el mes «Desde»)—, y los
+        acumulados del ejercicio, como la utilidad, solo contra el año anterior; el índice base
+        100 parte del primer mes con dato del tramo; la diferencia contra el sistema solo existe
+        para ratios. El radar ubica a cada institución en percentiles frente a todo su sector.`,
       terminos: [TERMINO_KPI[c.kpi]].filter(Boolean),
       j: S.j,
     })}
   </section>`;
 }
 
+/* La hoja de opciones en pantallas angostas: abierta o no es cosa de la sesión,
+   no del corte, así que vive fuera de `S.cmp` (no entra en la memoria ni en la
+   caché de paneles: el `render` la vuelve a leer de aquí). */
+let _cmpHoja = false, _cmpHojaY = 0;
+const cmpAngosto = () => matchMedia("(max-width: 980px)").matches;
+
 function ligarConstructor() {
   const sec = document.querySelector("#main section.cmp");
   if (!sec) return;
   const c = S.cmp;
+  const ws = sec.querySelector(".cmpws"), panel = sec.querySelector(".cmppanel");
+  /* La caché de paneles puede traer el HTML con la hoja en otro estado. */
+  panel.classList.toggle("abierta", _cmpHoja);
+  sec.querySelectorAll("[data-cmhoja]").forEach(b => b.setAttribute("aria-expanded", _cmpHoja));
+  if (_cmpHoja) panel.scrollTop = _cmpHojaY;
+  panel.addEventListener("scroll", () => { _cmpHojaY = panel.scrollTop; }, { passive: true });
+  const hoja = on => { _cmpHoja = on; panel.classList.toggle("abierta", on);
+    sec.querySelectorAll("[data-cmhoja]").forEach(b => b.setAttribute("aria-expanded", on)); };
+  /* Plegar no vuelve a dibujar: cambia la rejilla en sitio para que la
+     transición se vea, y el ResizeObserver reescala el gráfico. */
+  const plegar = on => {
+    c.plegado = on; ws.toggleAttribute("data-plegado", on);
+    const b = sec.querySelector("[data-cmplegar]");
+    b.setAttribute("aria-expanded", !on);
+    b.title = on ? "Mostrar las opciones" : "Plegar las opciones y agrandar el gráfico";
+    b.setAttribute("aria-label", on ? "Mostrar opciones" : "Plegar opciones");
+    guardarEstado();
+  };
+  const enfocar = k => {
+    if (cmpAngosto()) hoja(true); else if (c.plegado) plegar(false);
+    const s = sec.querySelector(`.cmpsec[data-sec="${k}"]`);
+    if (!s) return;
+    requestAnimationFrame(() => {
+      s.scrollIntoView({ block: "nearest", behavior: reducido() ? "auto" : "smooth" });
+      s.classList.remove("brilla"); void s.offsetWidth; s.classList.add("brilla");
+    });
+  };
+  sec.querySelectorAll("[data-cmplegar]").forEach(b => b.addEventListener("click", e => {
+    e.stopPropagation();
+    if (cmpAngosto()) hoja(!_cmpHoja); else plegar(!c.plegado);
+  }));
+  sec.querySelectorAll(".cmpph").forEach(h => h.addEventListener("click", () => { if (cmpAngosto()) hoja(!_cmpHoja); }));
+  sec.querySelectorAll("[data-cmhoja]").forEach(b => b.addEventListener("click", () => hoja(!_cmpHoja)));
+  sec.querySelectorAll("[data-cmfoco]").forEach(b => b.addEventListener("click", () => enfocar(b.dataset.cmfoco)));
+  sec.querySelectorAll("[data-cmvar]").forEach(b => b.addEventListener("click", () => { c.var = !c.var; render(); }));
+  sec.querySelectorAll("[data-cmvunid]").forEach(b => b.addEventListener("click", () => {
+    if (c.vunid === b.dataset.cmvunid) return;
+    c.vunid = b.dataset.cmvunid; render();
+  }));
   sec.querySelectorAll("[data-cmtipo]").forEach(b => b.addEventListener("click", () => { c.tipo = b.dataset.cmtipo; render(); }));
   sec.querySelectorAll("select[data-cm]").forEach(s => s.addEventListener("change", () => {
     const k = s.dataset.cm;
@@ -8861,6 +9077,11 @@ function pintarTop() {
   $("#filtros").classList.toggle("cmpmodo", cmpmodo);
   ["#fbase", "#fgrupo", ".fper"].forEach(q => { const e = $(q);
     if (e) e.title = cmpmodo ? "En Comparar, el periodo y la variación se eligen dentro del constructor" : ""; });
+  const cmpcons = cmpmodo && !S.todo && S.panel === "constructor";
+  $("#filtros").classList.toggle("cmpcons", cmpcons);
+  [".finst", "#limpiar"].forEach(q => { const e = $(q);
+    if (e) e.title = cmpcons ? "En «A tu medida» las instituciones se eligen dentro del constructor"
+      : q === "#limpiar" ? "Quitar destacadas y volver al sistema completo" : ""; });
 }
 function pintarRail(esps) {
   const a = I();
