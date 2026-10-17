@@ -1214,6 +1214,10 @@ select, .btn { font-family: var(--sans); background: var(--surface); }
 .esp { max-width: 1320px; margin: 0 auto; padding: 18px 20px 60px;
        display: flex; flex-direction: column; gap: 14px; animation: entra .22s ease-out; }
 @keyframes entra { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+/* La entrada es para cuando cambia la vista (otra pestaña, otro panel). Otro
+   mes, grupo o base sobre la misma vista refresca sin volver a aparecer: si
+   no, toda la página parpadeaba a cada paso del deslizador. */
+#main.quieto .esp { animation: none; }
 .ehead { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 16px; }
 .ehead .kick { font: 600 10px/1 var(--mono); letter-spacing: .12em; color: var(--accent);
                text-transform: uppercase; flex: 1 0 100%; }
@@ -10301,6 +10305,8 @@ function render(arriba) {
      HTML: reemplazarlo cortaba el arrastre a mitad de camino. */
   const mesp = _mespVivo && MAIN().contains(_mespVivo) ? _mespVivo : null;
   const kMesp = mesp ? $$("#main .mesp").indexOf(mesp) : -1;
+  const vista = [S.mundo, e.id, S.panel, S.todo, S.itab].join("~");
+  main.classList.toggle("quieto", vista === _ultimaVista && !arriba);
   cambiarHTML(main, html);
   if (mesp) {
     const nuevo = $$("#main .mesp")[kMesp];
@@ -10315,7 +10321,6 @@ function render(arriba) {
   ligarDistribucion(); ligarDetalle(); ligarOrden(); ligarForma(); ligarResultado();
   ligarExport(); ligarComunes(main); ligarEspacio(); ligarConstructor(); ligarDeslizador();
 
-  const vista = [S.mundo, e.id, S.panel, S.todo, S.itab].join("~");
   main.scrollTop = arriba || vista !== _ultimaVista ? 0 : y;
   _ultimaVista = vista;
 
