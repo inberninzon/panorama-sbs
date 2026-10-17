@@ -1669,6 +1669,17 @@ label.chk:has(input:disabled) { opacity: .45; cursor: default; }
                                  border: 1px solid var(--rule); border-radius: 999px; height: 28px; padding: 0 11px; cursor: pointer; }
 .cmppre select { padding-right: 26px; }
 .cmppre button:hover { color: var(--ink); border-color: var(--accent); }
+/* Combinaciones listas: una por línea, la recomendada con su estrella. */
+.cmprec { display: flex; flex-direction: column; gap: 6px; }
+.cmprec button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;
+                 font: 500 12px/1.3 var(--sans); color: var(--ink-2); background: transparent;
+                 border: 1px solid var(--rule); border-radius: 10px; padding: 8px 11px; }
+.cmprec button:hover { color: var(--ink); border-color: var(--accent); }
+.cmprec button[aria-pressed="true"] { color: var(--ink); border-color: var(--accent);
+                                      background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.cmprec .rec-st { color: var(--amber); font-size: 13px; width: 14px; flex: none; }
+.cmprec .rec-tx { flex: 1; min-width: 0; }
+.cmprec .rec-tx small { display: block; color: var(--muted); font-size: 11px; }
 
 /* Plegado: solo el riel de íconos, cada uno abre su sección. */
 .cmprail { display: none; }
@@ -2563,11 +2574,13 @@ const MONO = "'IBM Plex Mono', ui-monospace, Menlo, monospace";
    el HTML salía de la caché pero `_G` seguía con el gráfico del último estado
    dibujado (el constructor «no volvía» al deshacer un cambio). */
 let _regG = null;
-/* `suave`: al volver a dibujarse con otro mes, el gráfico no se destruye: se
-   le pasa la opción nueva a la instancia que ya está en pantalla. Si es una
-   función, decide ella cómo transitar (el sankey interpola sus flujos). */
-function grafico(id, fn, { h = 360, hm, click, renderer = "svg", gl = false, hx, clase = "", rehacer = false, suave = false } = {}) {
-  const g = { fn, h, hx, click, renderer, gl, rehacer, suave };
+/* `suave`: al volver a dibujarse (otro mes, otra destacada, otro tema) el
+   gráfico no se destruye: se le pasa la opción nueva a la instancia que ya
+   está en pantalla y ECharts anima desde lo que había. Es lo normal; los GL
+   no lo admiten. Si es una función, decide ella cómo transitar (el sankey
+   interpola sus flujos, porque ECharts lo redibuja entero). */
+function grafico(id, fn, { h = 360, hm, click, renderer = "svg", gl = false, hx, clase = "", rehacer = false, suave = true } = {}) {
+  const g = { fn, h, hx, click, renderer, gl, rehacer, suave: gl ? false : suave };
   _G.set(id, g);
   if (_regG) _regG.push([id, g]);
   return `<div class="gx ${clase}" id="${esc(id)}" style="--h:${h}px;--hm:${hm || Math.max(220, Math.round(h * .8))}px"></div>`;
@@ -2637,20 +2650,29 @@ function montarGraficos(root) {
     if (!g) return;
     if (!ec) { el.innerHTML = `<p class="gx-sin">No se pudo cargar el motor de gráficos (¿sin conexión?).</p>`; return; }
     const viejo = ec.getInstanceByDom(el);
-    const seguir = viejo && g.suave && el.dataset.suave === "1";
-    if (viejo && !seguir) viejo.dispose();
+    let seguir = viejo && g.suave && el.dataset.suave === "1";
     let opt;
     g.w = el.clientWidth;
     _vigPins = true; _leePins = false;
     try { opt = g.fn({ gl: g.gl && glListo(), w: g.w }); } catch (e) { console.error(el.id, e); return; }
     finally { g.usaPins = _leePins; _vigPins = false; }
-    if (!opt) return;
+    if (!opt) { if (viejo && !seguir) viejo.dispose(); return; }
     if (opt._alto) { el.style.height = opt._alto + "px"; delete opt._alto; }
     const t = tk();
+    /* Si cambió la forma del gráfico (otras series, otro tipo: el constructor
+       al pasar de líneas a ranking), no hay nada que animar: se dibuja nuevo. */
+    const tipos = xs => [].concat(xs || []).map(x => x.type);
+    const antes = seguir ? tipos(viejo.getOption().series) : [], ahora = tipos(opt.series);
+    const misma = antes.join("|") === ahora.join("|");
+    if (seguir && typeof g.suave !== "function" && !misma &&
+        [...new Set(antes)].sort().join("|") !== [...new Set(ahora)].sort().join("|")) seguir = false;
+    if (viejo && !seguir) viejo.dispose();
     if (seguir) {
       const o = { ...opt, tooltip: opt.tooltip === false ? undefined : { ...tipBase(t), ...(opt.tooltip || {}) } };
       if (typeof g.suave === "function" && !reducido()) g.suave(viejo, o);
-      else viejo.setOption(o, { replaceMerge: ["series"] });
+      /* Merge normal: cada serie anima desde su valor anterior. Si solo cambió
+         cuántas hay (una destacada más o menos), se reemplazan las series. */
+      else viejo.setOption(o, { replaceMerge: misma ? ["graphic"] : ["series", "graphic"] });
       viejo.off("click");
       if (g.click) viejo.on("click", p => g.click(p));
       return;
@@ -2662,6 +2684,27 @@ function montarGraficos(root) {
     if (g.suave) el.dataset.suave = "1";
     _ro && _ro.observe(el);
     if (g.gl && !glListo()) cargarGL().then(ok => ok && document.body.contains(el) && montarGraficos(el.parentNode));
+  });
+}
+/** Cambia el HTML de `root` conservando los gráficos vivos: el nodo de cada
+ *  uno, con su instancia, reemplaza al contenedor vacío del HTML nuevo que
+ *  trae su mismo id, y `montarGraficos` le pasa la opción nueva en vez de
+ *  dibujar desde cero. Los que el HTML nuevo ya no trae se descartan. */
+function cambiarHTML(root, html) {
+  const ec = EC(), vivos = new Map();
+  if (ec) root.querySelectorAll('.gx[data-suave="1"]').forEach(el => {
+    const g = _G.get(el.id);
+    if (g && g.suave && ec.getInstanceByDom(el)) vivos.set(el.id, el);
+  });
+  desmontarGraficos(root, vivos);
+  root.innerHTML = html;
+  vivos.forEach((el, id) => {
+    const nuevo = root.querySelector("#" + CSS.escape(id));
+    if (nuevo) {
+      el.className = nuevo.className;
+      ["--h", "--hm"].forEach(v => el.style.setProperty(v, nuevo.style.getPropertyValue(v)));
+      nuevo.replaceWith(el);
+    } else { const c = ec.getInstanceByDom(el); _ro && _ro.unobserve(el); c && c.dispose(); }
   });
 }
 function desmontarGraficos(root, salvo) {
@@ -6911,10 +6954,17 @@ function deslizadorMes() {
     <span class="per">${esc(etiquetaPeriodo(d.periodos[S.j]).replace(/^(\w{3})\w*/, "$1").toUpperCase())}</span>
     <button class="stp" data-mesp="1" aria-label="Mes siguiente">›</button></div>`;
 }
+/* El deslizador que se está moviendo: se anota en cada `input` y se suelta
+   al terminar (`change`), para que `render()` lo conserve mientras tanto. */
+let _mespVivo = null;
 function ligarDeslizador() {
   $$("#main .mesp").forEach(w => {
+    if (w.dataset.ok) return;
+    w.dataset.ok = 1;
     const r = w.querySelector("input"), per = w.querySelector(".per");
+    r.addEventListener("change", () => { if (_mespVivo === w) _mespVivo = null; });
     r.addEventListener("input", () => {
+      _mespVivo = w;
       S.j = +r.value;
       per.textContent = etiquetaPeriodo(D().periodos[S.j]).replace(/^(\w{3})\w*/, "$1").toUpperCase();
       clearTimeout(_rangoT); _rangoT = setTimeout(render, 90);
@@ -8980,6 +9030,49 @@ const CMP_TRANSF = [["nivel", "Nivel"], ["base100", "Índice base 100"], ["dif",
 const CMP_VBASE = [["yoy", "vs. año anterior"], ["mom", "vs. mes anterior"], ["dic", "vs. cierre del año anterior"], ["tramo", "vs. inicio del tramo"]];
 const CMP_VCORTA = { yoy: "vs. año ant.", mom: "vs. mes ant.", dic: "vs. dic. ant.", tramo: "vs. inicio" };
 const CMP_FREC = [["m", "Mensual"], ["q", "Trimestral"], ["a", "Cierre de año"]];
+/* Combinaciones listas por sector: cada una fija gráfico, variable e
+   instituciones de un golpe. La primera es la que más se consulta en ese
+   sector y va marcada como recomendada. Una que pida una variable o un grupo
+   que el sector no tenga se omite sola. */
+const CMP_RECETAS = {
+  Banca: [
+    { t: "Morosidad de los 5 mayores", d: "Líneas · últimos 24 meses", tipo: "lineas", kpi: "morosidad", ents: "top5" },
+    { t: "Ranking de ROE", d: "Todos los bancos · último mes", tipo: "ranking", kpi: "roe", ents: "todas" },
+    { t: "ROE frente a morosidad", d: "Dispersión · 10 mayores · tamaño = activo", tipo: "dispersion", kpi: "morosidad", kpiY: "roe", kpiR: "activo", ents: "top10" },
+    { t: "Utilidad de los bancos grandes", d: "Barras · acumulada del ejercicio", tipo: "barras", kpi: "utilidad_ytd", ents: "g:grandes" },
+  ],
+  Cajas: [
+    { t: "Morosidad de las 5 mayores", d: "Líneas · últimos 24 meses", tipo: "lineas", kpi: "morosidad", ents: "top5" },
+    { t: "Ranking de ROE", d: "Todas las cajas · último mes", tipo: "ranking", kpi: "roe", ents: "todas" },
+    { t: "ROE frente a morosidad", d: "Dispersión · todas · tamaño = activo", tipo: "dispersion", kpi: "morosidad", kpiY: "roe", kpiR: "activo", ents: "todas" },
+    { t: "Utilidad de las CMAC grandes", d: "Barras · acumulada del ejercicio", tipo: "barras", kpi: "utilidad_ytd", ents: "g:cmac_grandes" },
+  ],
+  Seguros: [
+    { t: "Siniestralidad de las 5 mayores", d: "Líneas · últimos 24 meses", tipo: "lineas", kpi: "sin_directa", ents: "top5" },
+    { t: "Ranking de ROE", d: "Todas las aseguradoras · último mes", tipo: "ranking", kpi: "roe", ents: "todas" },
+    { t: "ROE frente a siniestralidad", d: "Dispersión · 10 mayores · tamaño = activo", tipo: "dispersion", kpi: "sin_directa", kpiY: "roe", kpiR: "activo", ents: "top10" },
+    { t: "Participación en primas", d: "Líneas · 5 mayores", tipo: "lineas", kpi: "rk:Total Primas de Seguros", ents: "top5" },
+  ],
+  Pensiones: [
+    { t: "Rentabilidad del Fondo 2", d: "Líneas · las 4 AFP · anualizada a 5 años", tipo: "lineas", kpi: "rent_f2_5a", ents: "todas" },
+    { t: "Comisión frente a ROE", d: "Dispersión · tamaño = fondo administrado", tipo: "dispersion", kpi: "com_saldo", kpiY: "roe", kpiR: "fondo", ents: "todas" },
+    { t: "Participación en el fondo", d: "Apiladas · las 4 AFP", tipo: "apiladas", kpi: "rk:Fondo administrado", ents: "todas" },
+    { t: "Afiliados por AFP", d: "Barras · las 4 AFP", tipo: "barras", kpi: "afiliados", ents: "todas" },
+  ],
+};
+function cmpRecetas(M, mundo) {
+  const hay = new Set(cmpVars(M).map(v => v.id));
+  return (CMP_RECETAS[mundo] || []).filter(r => [r.kpi, r.kpiY, r.kpiR].filter(Boolean).every(id => hay.has(id))
+    && (!r.ents.startsWith("g:") || (M.grupos || {})[r.ents.slice(2)])).slice(0, 4);
+}
+function cmpAplicarReceta(r) {
+  const c = S.cmp, M = cmpM(), n = M.periodos.length;
+  Object.assign(c, { tipo: r.tipo, kpi: r.kpi, transf: "nivel", sis: true,
+    hasta: M.periodos[n - 1], desde: M.periodos[Math.max(0, n - 25)] });
+  if (r.kpiY) c.kpiY = r.kpiY;
+  if (r.tipo === "dispersion") c.kpiR = r.kpiR || "";
+  c.ents = cmpPreset(M, r.ents); c.vacio = !c.ents.length;
+}
 /* Colores de las instituciones que no tienen marca ni están destacadas: doce
    bien separados, cada uno en su versión clara y oscura. */
 const CMP_PAL = [["#2563eb", "#60a5fa"], ["#d97706", "#fbbf24"], ["#059669", "#34d399"], ["#db2777", "#f472b6"],
@@ -9414,10 +9507,12 @@ function vistaConstructor() {
     var: '<path d="M8 2.5l5.5 10.5h-11z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>',
     ents: '<circle cx="5" cy="6" r="2.4" fill="currentColor"/><circle cx="11" cy="6" r="2.4" fill="currentColor" opacity=".55"/><path d="M1.5 13.5c.6-2.2 2-3.3 3.5-3.3s2.9 1.1 3.5 3.3M8.5 13.5c.4-1.5 1.3-3.3 2.5-3.3 1.6 0 2.9 1.1 3.5 3.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>',
     plegar: '<path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    rec: '<path d="M8 1.8l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.2l-3.7 2.1.8-4.2L2 6.2l4.2-.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>',
   };
   const ic = (k, w = 16) => `<svg viewBox="0 0 16 16" width="${w}" height="${w}" aria-hidden="true">${IC[k]}</svg>`;
-  const nRes = { corte: "", var: sinVar ? "" : c.var ? (c.vunid === "nom" ? "S/" : "%") : "off", ents: String(fil.length) };
-  const ROT = { corte: "Corte", var: "Variación", ents: "Instituciones" };
+  const nRes = { rec: "", corte: "", var: sinVar ? "" : c.var ? (c.vunid === "nom" ? "S/" : "%") : "off", ents: String(fil.length) };
+  const ROT = { rec: "Combinaciones", corte: "Corte", var: "Variación", ents: "Instituciones" };
+  const recetas = cmpRecetas(M, c.mundo);
 
   return `<section class="cmp">
     <div class="shead">
@@ -9441,9 +9536,14 @@ function vistaConstructor() {
           <b>Opciones</b>
           <button class="cmpplegar" data-cmplegar aria-expanded="${!c.plegado}" title="${c.plegado ? "Mostrar las opciones" : "Plegar las opciones y agrandar el gráfico"}" aria-label="${c.plegado ? "Mostrar opciones" : "Plegar opciones"}">${ic("plegar")}</button>
         </div>
-        <div class="cmprail" role="group" aria-label="Secciones de opciones">${["corte", "var", "ents"].map(k =>
+        <div class="cmprail" role="group" aria-label="Secciones de opciones">${[...(recetas.length ? ["rec"] : []), "corte", "var", "ents"].map(k =>
           `<button data-cmfoco="${k}" title="${ROT[k]}" aria-label="${ROT[k]}">${ic(k, 18)}${nRes[k] ? `<b>${esc(nRes[k])}</b>` : ""}</button>`).join("")}</div>
         <div class="cmpsecs">
+          ${recetas.length ? `<div class="cmpsec" data-sec="rec">
+            <h3>${ic("rec", 13)}Combinaciones</h3>
+            <div class="cmprec">${recetas.map((r, k) => `<button data-cmrec="${k}" aria-pressed="${r.tipo === c.tipo && r.kpi === c.kpi}"
+              title="${k ? "" : "Recomendada · "}${esc(r.t)}"><span class="rec-st">${k ? "" : "★"}</span><span class="rec-tx">${esc(r.t)}<small>${esc(r.d)}</small></span></button>`).join("")}</div>
+          </div>` : ""}
           <div class="cmpsec" data-sec="corte">
             <h3>${ic("corte", 13)}Corte</h3>
             <div class="cmpgrid">
@@ -9560,6 +9660,10 @@ function ligarConstructor() {
     c.vunid = b.dataset.cmvunid; render();
   }));
   sec.querySelectorAll("[data-cmtipo]").forEach(b => b.addEventListener("click", () => { c.tipo = b.dataset.cmtipo; render(); }));
+  sec.querySelectorAll("[data-cmrec]").forEach(b => b.addEventListener("click", () => {
+    const r = cmpRecetas(cmpM(), c.mundo)[+b.dataset.cmrec];
+    if (r) { cmpAplicarReceta(r); render(); }
+  }));
   sec.querySelectorAll("select[data-cm]").forEach(s => s.addEventListener("change", () => {
     const k = s.dataset.cm;
     c[k] = s.value;
@@ -9839,6 +9943,8 @@ let _cajon = null;
 function abrirCajon(tipo, arg) {
   _cajon = { tipo, arg };
   pintarCajon();
+  // Cada apertura empieza arriba; los repintados con el cajón abierto no.
+  $("#cajon .cbody").scrollTop = 0;
   $("#cajon").classList.add("on"); $("#velo").classList.add("on");
 }
 function cerrarCajon() {
@@ -9852,8 +9958,7 @@ function pintarCajon() {
   if (!r) return cerrarCajon();
   $("#cajon .k").textContent = r.k;
   $("#cajon h2").textContent = r.t;
-  desmontarGraficos($("#cajon .cbody"));
-  $("#cajon .cbody").innerHTML = r.html;
+  cambiarHTML($("#cajon .cbody"), r.html);
   montarGraficos($("#cajon .cbody"));
   $$("#cajon .cbody .expw, #cajon .cbody .seg, #cajon .cbody [data-carpeta]").forEach(e => e.remove());
   ligarComunes($("#cajon .cbody"));
@@ -10192,21 +10297,19 @@ function render(arriba) {
       ${visibles.map(p => p.html).join("")}
     </div>`;
   }
-  /* Los gráficos `suave` sobreviven al cambio de HTML: su nodo, con la
-     instancia viva, reemplaza al contenedor vacío que trae el HTML nuevo, y
-     `montarGraficos` le pasa la opción nueva en vez de dibujar desde cero. */
-  const vivos = new Map();
-  if (EC()) main.querySelectorAll('.gx[data-suave="1"]').forEach(el => {
-    const g = _G.get(el.id);
-    if (g && g.suave && EC().getInstanceByDom(el)) vivos.set(el.id, el);
-  });
-  desmontarGraficos(main, vivos);
-  main.innerHTML = html;
-  vivos.forEach((el, id) => {
-    const nuevo = document.getElementById(id);
-    if (nuevo && main.contains(nuevo)) nuevo.replaceWith(el);
-    else { const c = EC().getInstanceByDom(el); _ro && _ro.unobserve(el); c && c.dispose(); }
-  });
+  /* El deslizador del panel que se está arrastrando sobrevive al cambio de
+     HTML: reemplazarlo cortaba el arrastre a mitad de camino. */
+  const mesp = _mespVivo && MAIN().contains(_mespVivo) ? _mespVivo : null;
+  const kMesp = mesp ? $$("#main .mesp").indexOf(mesp) : -1;
+  cambiarHTML(main, html);
+  if (mesp) {
+    const nuevo = $$("#main .mesp")[kMesp];
+    if (nuevo) {
+      nuevo.replaceWith(mesp);
+      mesp.querySelector("input").value = S.j;
+      mesp.querySelector(".per").textContent = etiquetaPeriodo(D().periodos[S.j]).replace(/^(\w{3})\w*/, "$1").toUpperCase();
+    }
+  }
   decorar(main);
   ligarMapa(); ligarEstructura(); ligarBump(); ligarEvolucion(); ligarSemaforo();
   ligarDistribucion(); ligarDetalle(); ligarOrden(); ligarForma(); ligarResultado();
